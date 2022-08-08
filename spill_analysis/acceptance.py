@@ -10,6 +10,8 @@ import time
 from sklearn.decomposition import PCA
 import scipy
 import particle
+import numba
+import awkward as awk
 '''
 h5 file format for edep sim output
 file['segments'] --> 
@@ -74,6 +76,7 @@ def get_all_lineage(trackID, trajectories):
 		all_lineage.update(get_all_lineage(daughter_id, trajectories))
 	return all_lineage
 
+#@vectorize
 def v_get_all_lineage(trackIDs, trajectories):
 	total_lineage = set()
 	for trackID in trackIDs:
@@ -86,6 +89,8 @@ def get_neutron_energy(p):
 	neutron_mass = 939.6 #Mev
 	return np.sqrt(np.linalg.norm(p)**2 + neutron_mass**2) - neutron_mass
 
+
+#@vectorize
 def v_get_neutron_energy(ps):
 	return np.vectorize(get_neutron_energy)(ps)
 
@@ -164,6 +169,8 @@ def is_in_minerva_side_ecal(x, y, z):
 def is_in_minerva_veto(x, y, z):
 	return z < MINERVA_1_MAX_Z
 
+
+#@vectorize
 def v_get_2x2_minerva_subdetector(x, y, z):
 	return np.vectorize(get_2x2_minerva_subdetector)(x, y, z)
 	
@@ -245,6 +252,7 @@ def analyze_containment(truth_energies,  _thetas, total_edeps, containment_cuts=
 
 	return np.array(energy_containment), energies_full_range, energies_small_range, np.array(theta_containment), thetas, th_energy_containment
 
+#@vectorize
 def v_distance_to_line(_line_direction, midpt, pt):
 	line_direction = _line_direction/np.linalg.norm(_line_direction)
 	def distance_to_line(pt):
@@ -276,6 +284,39 @@ def single_particle_contained(tr, _segments, _trajectories):
 				high_energy_flag = True
 
 		if not high_energy_flag: not_contained_flag = False
+
+
+#
+
+
+
+#
+
+
+#
+
+
+#
+
+	return not not_contained_flag
+
+
+
+
+
+
+#
+
+
+
+#
+
+
+
+#
+
+
+########################################################
 
 	if (tr['pdgId'] in [-13, 13]) and not_contained_flag: #muon, look for muon tag
 		segments = segments[get_detector_containment_mask(segments['x_start'], segments['y_start'], segments['z_start'])]
@@ -351,28 +392,27 @@ def single_particle_contained(tr, _segments, _trajectories):
 	
 def v4_norm(v4):
 	return np.sqrt( np.absolute(v4[3]**2 - np.linalg.norm(v4[0:3])**2 ) ) 
+
+
 def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _all_vertices):
+
 	ignore_particle_ids = [2112, 12, 14, 16, -12, -14, -16]
 	all_segments = _all_segments['eventID', 'trackID', 'dE', 'dEdx', 'x_start', 'y_start', 'z_start', 'z_end']
 	all_trajectories = _all_trajectories['eventID', 'trackID', 'parentID', 'xyz_start', 'pxyz_start', 'pdgId']
 	all_particle_stack = _all_particle_stack['eventID', 'p4', 'status', 'pdgId']
 	all_event_ids = set(all_trajectories['eventID'])
-	data = dict({ \
-		'fs_energy_sum' : [], \
-		'all_contained' : [], \
-		'visible_energy' : [],
-		'n_pions' : [],
-		'nu_i' : [],
-		'nu_i_energy' : [],
-		'q' : [],
-		'fs' : [],
-		'W' : []
-		})
-	
+	data = np.empty( len(all_event_ids), dtype=np.dtype( \
+		[("eventID","u4"),("contained","i4"),("W","f8"),
+         ("visible_energy","f8"), ("n_pions", "i4"), ("nu_i", "i4"), 
+         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), 
+         ("fs", "i4"), ("fs_energy_sum", "f8"), ("all_contained", "i4")]) )
+
+
 	max_evdid = len(all_event_ids)
-	for eventN in all_event_ids:
-		if (eventN % 100 == 0): print(eventN, '/', max_evdid)
-		if eventN > 100: return data
+	times = []
+	for idata, eventN in enumerate(all_event_ids):
+		start = time.time()
+	#	if eventN > 100: return data
 
 		_trajectories = all_trajectories[all_trajectories['eventID']==eventN]
 		_segments = all_segments[all_segments['eventID']==eventN]
@@ -381,21 +421,19 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 		fs_stack = _stack[_stack['status']==1]
 		i_stack = _stack[_stack['status']==0]
 
-		data['fs_energy_sum'].append(np.sum([part['p4'][3] for part in fs_stack]))
-
-		data['visible_energy'].append(np.sum(_segments['dE'][get_active_mask(_segments['x_start'], _segments['y_start'], _segments['z_start'])]))
+		data[idata]['fs_energy_sum'] = np.sum([part['p4'][3] for part in fs_stack])
 
 		found_nu = False
 		initial_energy = 0
 		nu_p4 = None
 		for ipart, pdg in enumerate(i_stack['pdgId']):
 			if pdg in [12, -12, 14, -14]:
-				data['nu_i'].append(pdg)
+				data[idata]['nu_i'] = pdg
 				found_nu = True
 				initial_energy = i_stack[ipart]['p4'][3]*GeV
 				nu_p4 = np.array(i_stack[ipart]['p4'])*GeV
-				data['nu_i_energy'].append(initial_energy)
-		if not found_nu: data['nu_i'].append(0)
+				data[idata]['nu_i_energy'] = initial_energy
+		if not found_nu: data[idata]['nu_i'] = 0
 
 		found_fs = False
 		fs_p4 = None
@@ -403,7 +441,7 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 		final_energy = 0
 		for ipart,pdg in enumerate(fs_stack['pdgId']):
 			if pdg in [12, -12, 14, -14, 11, -11, 13, -13]:
-				if not found_fs: data['fs'].append(pdg) #FIX ME!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+				if not found_fs: data[idata]['fs'] = pdg #FIX ME!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 				found_fs = True
 				final_energy = fs_stack[ipart]['p4'][3]*GeV
 				fs_p4 = fs_stack[ipart]['p4']*GeV
@@ -411,13 +449,13 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 				
 			if pdg in [211, -211, 111]: n_pions += 1
 
-		if not found_fs: data['fs'].append(0)
+		if not found_fs: data[idata]['fs'] = 0
 		
 		nucleon_stack =  _stack[_stack['status']==11]
 		nucleon = None
 		if len(nucleon_stack)==0:
 			nucleon = None
-			data['W'].append(-1)
+			data[idata]['W'] = -1
 		else:
 			nucleon = nucleon_stack[0]
 			nuc_mass = 0
@@ -427,28 +465,31 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 				nuc_mass = particle.Particle.from_pdgid(nucleon['pdgId']).mass
 			nuc_p4 = np.array([0, 0, 0, nuc_mass])
 			hadronic_p4 = nu_p4 + nuc_p4 - fs_p4
-			data['W'].append(v4_norm(hadronic_p4))
+			data[idata]['W'] = v4_norm(hadronic_p4)
 			#print(data['W'][-1])
 
-		data['n_pions'].append(n_pions)
+		data[idata]['n_pions'] = n_pions
 
-		data['q'].append(np.absolute(final_energy-initial_energy))
+		data[idata]['q'] = np.absolute(final_energy-initial_energy)
+
+		data[idata]['visible_energy'] = np.sum(_segments['dE'][get_active_mask(_segments['x_start'], _segments['y_start'], _segments['z_start'])])
 
 		diff = fs_p4 - nu_p4
-		data['q2'].append(  v4_norm(diff)**2 )
+		data[idata]['q2'] =  v4_norm(diff)**2 
 
 		fs_trajectory_mask = _trajectories['parentID']==-1
 		fs_trajectories = _trajectories[fs_trajectory_mask]
 
 		contained = [single_particle_contained(tr, _segments, _trajectories) for tr in fs_trajectories]
 
-		data['all_contained'].append(all(contained))
+		data[idata]['all_contained'] = all(contained)
+		times.append(time.time()-start)
 		
+		if (eventN % 100 == 0): 
+			print(eventN, '/', max_evdid)
+			print('avg loop time:', np.mean(times) )
 
 	return data
-
-
-
 
 def main(_all_segments, _all_trajectories, _all_particle_stack, _all_vertices):
 	return containment_study(_all_segments, _all_trajectories, _all_particle_stack, _all_vertices)
