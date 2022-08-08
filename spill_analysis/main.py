@@ -36,12 +36,8 @@ def main(dirname, plot_dir=_defualt_plot_dir, data_file='data.h5'):
 	data = dict()
 	plotdir = plot_dir + '/'
 	prefix = plotdir
-	if not os.path.isfile(prefix + data_file): 
+	if not os.path.exists(prefix + data_file): 
 		initHDF5File(prefix+data_file, 'data')
-
-	this_result = np.empty(10, dtype=data_type)
-
-	updateHDF5File(prefix+data_file, 'data', this_result)
 
 	for ifile, file in enumerate(files):
 		start = time.time()

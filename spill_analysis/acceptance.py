@@ -11,7 +11,6 @@ from sklearn.decomposition import PCA
 import scipy
 import particle
 import numba
-import awkward as awk
 '''
 h5 file format for edep sim output
 file['segments'] --> 

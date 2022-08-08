@@ -12,7 +12,7 @@ import os
 
 def plot(filename, plotdir, fieldname='data'):
 
-	f = h5py.file(filename)
+	f = h5py.File(filename)
 	data=f[fieldname]
 
 	e_min = 0
