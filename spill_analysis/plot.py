@@ -12,21 +12,30 @@ import os
 
 def plot(filename, plotdir, fieldname='data'):
 
-	f = h5py.File(filename)
-	data=f[fieldname]
+	f = h5py.File(filename, 'r')
+	
+	print('opening')
+	data = f['data'][0:595000]
+	print('got W')
 
-	e_min = 0
+	e_min = -0.5
 	e_max = 15000
-	n_ebins = 50
+	n_ebins = 100
+
+	q_min = -0.5
+	q_max = 5000
+	n_qbins = 100
 	prefix = plotdir + '/'
 
 	fig = plt.figure()
 	ax = fig.add_subplot()
 	fig.suptitle('Containment vs. Nu Energy')
-	vals, edges = np.histogram(data['nu_i_energy'], weights=np.array(data['all_contained']).astype(int), bins=50, range=(e_min, e_max))
-	norms, edges = np.histogram(data['nu_i_energy'], bins=50, range=(e_min, e_max))
+	vals, edges = np.histogram(data['nu_i_energy'], weights=np.array(data['all_contained']).astype(int),bins=n_ebins, range=(e_min, e_max))
+	norms, edges = np.histogram(data['nu_i_energy'], bins=n_ebins, range=(e_min, e_max))
 	mdpnts = edges[:-1] + np.diff(edges)/2
 	normalized = np.divide(vals,norms)
+	print(sum(vals), sum(norms))
+	print(sum(normalized[np.logical_not(np.isnan(normalized))]))
 	ax.plot(mdpnts, normalized)
 	ax.set_xlabel('Nu Energy [MeV]')
 	ax.set_ylabel('Containment Fraction')
@@ -36,15 +45,24 @@ def plot(filename, plotdir, fieldname='data'):
 	fig = plt.figure()
 	ax = fig.add_subplot()
 	fig.suptitle('Containment vs. Energy Transfer')
-	vals, edges = np.histogram(data['q'], weights=np.array(data['all_contained']).astype(int), bins=n_ebins, range=(e_min, e_max))
-	norms, edges = np.histogram(data['q'], bins=n_ebins, range=(e_min, e_max))
+	vals, edges = np.histogram(data['q'], weights=np.array(data['all_contained']).astype(int), bins=n_qbins, range=(q_min, q_max))
+	norms, edges = np.histogram(data['q'], bins=n_qbins, range=(q_min, q_max))
 	mdpnts = edges[:-1] + np.diff(edges)/2
 	normalized = np.divide(vals,norms)
+	print(sum(vals), sum(norms))
+	print(sum(normalized[np.logical_not(np.isnan(normalized))]))
 	ax.plot(mdpnts, normalized)
 	ax.set_xlabel('q [MeV]')
 	ax.set_ylabel('Containment Fraction')
 	fig.savefig(prefix + 'containment_vs_q.png')
 	plt.close(fig)
+
+	mask = np.logical_or(data['q'] > q_max, data['q'] < 0)
+	print(len(data['q']))
+	print(len(data['q'][mask]))
+	print(len(data['q'][np.logical_not(mask)]))
+
+
 
 ##################################################################
 	#2d histogram of truth energy vs active edeps
@@ -75,8 +93,8 @@ def plot(filename, plotdir, fieldname='data'):
 
 
 	e_min = 0
-	e_max = 4500
-	e_bins = 125
+	e_max = 6000
+	e_bins = 150
 	
 	pion_counts = data['n_pions']
 	nu_energies = data['q']
@@ -143,7 +161,50 @@ def plot(filename, plotdir, fieldname='data'):
 	fig.savefig(prefix+'W_n_pions.png')
 	plt.close(fig)
 
+	#2d histogram of truth energy vs active edeps
+	w_min, w_max = 500, 4500
+	w_nbins = 70
+	q2_min, q2_max = 0, 4e6
+	q2_nbins = 70
+	fig = plt.figure()
+	ax = fig.add_subplot()
+	qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], weights=np.array(data['all_contained'].astype(int)), bins=(int(w_nbins/2), int(q2_nbins/2)), range=( (w_min, w_max), (q2_min, q2_max) ))
+	norm_qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], bins=(int(w_nbins/2), int(q2_nbins/2)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+	scaled_qwhist2d = np.divide(qwhist2d, norm_qwhist2d)
+	im = plt.imshow(np.transpose(scaled_qwhist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+	ax.set_xlabel('W [MeV]')
+	ax.set_ylabel('q^2 [MeV^2]')
+	fig.suptitle('Containment -- W vs. q^2')
+	cbar = fig.colorbar(im, ax=ax)
+	cbar.set_label('contained fraction', rotation=-90)
+	fig.savefig(prefix + 'w_q2_containment.png')
+	plt.close(fig)
+
+	fig = plt.figure()
+	ax = fig.add_subplot()
+	norm_qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], bins=(int(w_nbins*1.5), int(q2_nbins*1.5) ), range=( (w_min, w_max), (q2_min, q2_max) ))		
+	im = plt.imshow(np.transpose(norm_qwhist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+	ax.set_xlabel('W [MeV]')
+	ax.set_ylabel('q^2 [MeV^2]')
+	fig.suptitle('W vs. q^2')
+	fig.savefig(prefix + 'w_q2_distribution.png')
+	plt.close(fig)
+
+
+	fig = plt.figure()
+	ax = fig.add_subplot()
+	ax.hist(data['q2'], bins=100)
+	fig.suptitle('q^2')
+	ax.set_xlabel('q^2 [MeV]')
+	fig.savefig(prefix+'q2.png')
+
+
+
 	f.close()
+
+	#plot 2d containment vs W and q
+
+
 
 	return
 
