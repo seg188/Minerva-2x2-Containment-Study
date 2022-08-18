@@ -9,14 +9,9 @@ import sys
 import scipy as sp
 import timeit
 import os
+from acceptance import datatype as data_type
 
 _defualt_plot_dir = 'plots'\
-
-data_type = dtype=np.dtype( \
-		[("eventID","u4"),("contained","i4"),("W","f8"),
-         ("visible_energy","f8"), ("n_pions", "i4"), ("nu_i", "i4"), 
-         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), 
-         ("fs", "i4"), ("fs_energy_sum", "f8"), ("all_contained", "i4")]) 
 
 
 def initHDF5File(output_file, name, dtype=data_type):
