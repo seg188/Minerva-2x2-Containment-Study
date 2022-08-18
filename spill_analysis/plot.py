@@ -14,9 +14,7 @@ def plot(filename, plotdir, fieldname='data'):
 
 	f = h5py.File(filename, 'r')
 	
-	print('opening')
-	data = f['data'][0:595000]
-	print('got W')
+	data = f['data']
 
 	e_min = -0.5
 	e_max = 15000
@@ -34,8 +32,6 @@ def plot(filename, plotdir, fieldname='data'):
 	norms, edges = np.histogram(data['nu_i_energy'], bins=n_ebins, range=(e_min, e_max))
 	mdpnts = edges[:-1] + np.diff(edges)/2
 	normalized = np.divide(vals,norms)
-	print(sum(vals), sum(norms))
-	print(sum(normalized[np.logical_not(np.isnan(normalized))]))
 	ax.plot(mdpnts, normalized)
 	ax.set_xlabel('Nu Energy [MeV]')
 	ax.set_ylabel('Containment Fraction')
@@ -49,19 +45,11 @@ def plot(filename, plotdir, fieldname='data'):
 	norms, edges = np.histogram(data['q'], bins=n_qbins, range=(q_min, q_max))
 	mdpnts = edges[:-1] + np.diff(edges)/2
 	normalized = np.divide(vals,norms)
-	print(sum(vals), sum(norms))
-	print(sum(normalized[np.logical_not(np.isnan(normalized))]))
 	ax.plot(mdpnts, normalized)
-	ax.set_xlabel('q [MeV]')
+	ax.set_xlabel('$\omega$ [MeV]')
 	ax.set_ylabel('Containment Fraction')
 	fig.savefig(prefix + 'containment_vs_q.png')
 	plt.close(fig)
-
-	mask = np.logical_or(data['q'] > q_max, data['q'] < 0)
-	print(len(data['q']))
-	print(len(data['q'][mask]))
-	print(len(data['q'][np.logical_not(mask)]))
-
 
 
 ##################################################################
@@ -110,7 +98,7 @@ def plot(filename, plotdir, fieldname='data'):
 
 	fig = plt.figure()
 	ax = fig.add_subplot()
-	fig.suptitle('Pion Production vs. Energy Transfer -- NC, RHC')
+	fig.suptitle('Pion Production vs. Energy Transfer -- NC, FHC')
 	labels = []
 	for iplt in range(len(all_energies)):
 		_label = str(pion_bins[iplt]) + ' pions' if iplt < len(all_energies)-1 else  str(pion_bins[iplt]) + '+ pions'
@@ -137,30 +125,88 @@ def plot(filename, plotdir, fieldname='data'):
 
 	#################
 
+	### plotting as a function of n pions produced
 	pion_bins=[0, 1, 2, 3, 20]
-	all_energies = []
+	all_w = []
 	pion_counts = np.array(data['n_pions'])[w_mask]
+	
+	#W
 	for inp in range(len(pion_bins)-1):
+		ws = []
+		for iEvent in range(len(w_data)):
+			if pion_counts[iEvent] >= pion_bins[inp] and pion_counts[iEvent] < pion_bins[inp+1]:
+				ws.append(w_data[iEvent])
+		all_w.append(ws)
+
+	#Q, E
+	pion_counts = np.array(data['n_pions'])
+	all_contained = data['all_contained']
+	print('starting q, e loop')
+	print('pion counts length:', len(pion_counts))
+	print('initial nu energy len:', len(data['nu_i_energy']))
+	all_q = []
+	all_energies = []
+	all_contained_q_e = []
+	energy_data = data['nu_i_energy']
+	q_data = data['q']
+	for inp in range(len(pion_bins)-1):
+		qs = []
 		energies = []
+		contained_q_e = []
 		for iEvent in range(len(pion_counts)):
 			if pion_counts[iEvent] >= pion_bins[inp] and pion_counts[iEvent] < pion_bins[inp+1]:
-				energies.append(w_data[iEvent])
+				qs.append(q_data[iEvent])
+				energies.append(energy_data[iEvent])
+				contained_q_e.append(all_contained[iEvent])
+		all_q.append(qs)
 		all_energies.append(energies)
+		all_contained_q_e.append(contained_q_e)
 
 	fig = plt.figure()
 	ax = fig.add_subplot()
 	fig.suptitle('Pion Production vs. W -- CC')
 	labels = []
-	for iplt in range(len(all_energies)):
+	for iplt in range(len(pion_bins)-1):
 		_label = 'cc-' + str(pion_bins[iplt]) + 'pi' if iplt < len(all_energies)-1 else  'cc-' + str(pion_bins[iplt]) + '+pi'
 		labels.append(_label)
-	plt.hist(all_energies, bins=e_bins, stacked=False, histtype='step', label=labels, range=(e_min, e_max))
+	plt.hist(all_w, bins=e_bins, stacked=False, histtype='step', label=labels, range=(e_min, e_max))
 	plt.hist(w_data, range=(e_min, e_max), bins=e_bins, alpha=0.3, label='cc-inclusive')
 	ax.legend()
 	ax.set_xlabel('W [MeV]')
 	fig.savefig(prefix+'W_n_pions.png')
 	plt.close(fig)
 
+	labels = []
+	for iplt in range(len(all_energies)):
+		_label = str(pion_bins[iplt]) + 'pi' if iplt < len(all_energies)-1 else str(pion_bins[iplt]) + '+pi'
+		labels.append(_label)
+
+	fig = plt.figure()
+	ax = fig.add_subplot()
+	fig.suptitle('Energy Transfer by Pion Production')
+	plt.hist(all_q, bins=e_bins, stacked=False, histtype='step', label=labels, range=(0, 8000))
+	ax.legend()
+	ax.set_xlabel('$\omega$ [MeV]')
+	fig.savefig(prefix+'Q__pion_production.png')
+	plt.close(fig)
+
+	fig = plt.figure()
+	ax = fig.add_subplot()
+	fig.suptitle('Containment vs. Energy Transfer by Pion Production')
+	q_c_min, q_c_max = 0, 3000
+	q_c_bins = 25
+	for iplt in range(len(all_q)):
+		norms, edges = np.histogram(all_q[iplt], bins=q_c_bins, range=(q_c_min, q_c_max))
+		contained, edges = np.histogram(all_q[iplt], bins=q_c_bins, range=(q_c_min, q_c_max), weights=np.array(np.array(all_contained_q_e[iplt]).astype(int) ))
+		fraction = np.divide(contained, norms)
+		mdpnts = edges[:-1] + np.diff(edges)/2
+		plt.plot(mdpnts, fraction, label=labels[iplt])
+	ax.legend()
+	ax.set_xlabel('$\omega$ [MeV]')
+	fig.savefig(prefix+'Q_n_pions_containment.png')
+	plt.close(fig)
+
+	
 	#2d histogram of truth energy vs active edeps
 	w_min, w_max = 500, 4500
 	w_nbins = 70
@@ -168,13 +214,13 @@ def plot(filename, plotdir, fieldname='data'):
 	q2_nbins = 70
 	fig = plt.figure()
 	ax = fig.add_subplot()
-	qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], weights=np.array(data['all_contained'].astype(int)), bins=(int(w_nbins/2), int(q2_nbins/2)), range=( (w_min, w_max), (q2_min, q2_max) ))
-	norm_qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], bins=(int(w_nbins/2), int(q2_nbins/2)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+	qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], weights=np.array(data['all_contained'].astype(int)), bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))
+	norm_qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))		
 	scaled_qwhist2d = np.divide(qwhist2d, norm_qwhist2d)
 	im = plt.imshow(np.transpose(scaled_qwhist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
 	ax.set_xlabel('W [MeV]')
-	ax.set_ylabel('q^2 [MeV^2]')
-	fig.suptitle('Containment -- W vs. q^2')
+	ax.set_ylabel('$Q^2$ [MeV$^2$]')
+	fig.suptitle('Containment -- W vs. $Q^2$')
 	cbar = fig.colorbar(im, ax=ax)
 	cbar.set_label('contained fraction', rotation=-90)
 	fig.savefig(prefix + 'w_q2_containment.png')
@@ -185,8 +231,8 @@ def plot(filename, plotdir, fieldname='data'):
 	norm_qwhist2d, qwedges2d = np.histogramdd([np.array(data['W']), np.array(data['q2'])], bins=(int(w_nbins*1.5), int(q2_nbins*1.5) ), range=( (w_min, w_max), (q2_min, q2_max) ))		
 	im = plt.imshow(np.transpose(norm_qwhist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
 	ax.set_xlabel('W [MeV]')
-	ax.set_ylabel('q^2 [MeV^2]')
-	fig.suptitle('W vs. q^2')
+	ax.set_ylabel('$Q^2$ [MeV^2]')
+	fig.suptitle('W vs. $Q^2$')
 	fig.savefig(prefix + 'w_q2_distribution.png')
 	plt.close(fig)
 
@@ -194,15 +240,62 @@ def plot(filename, plotdir, fieldname='data'):
 	fig = plt.figure()
 	ax = fig.add_subplot()
 	ax.hist(data['q2'], bins=100)
-	fig.suptitle('q^2')
-	ax.set_xlabel('q^2 [MeV]')
+	fig.suptitle('$Q^2$')
+	ax.set_xlabel('$Q^2$ [MeV]')
 	fig.savefig(prefix+'q2.png')
+
+	fig = plt.figure()
+	ax = fig.add_subplot()
+	ax.hist(data['n_protons'], bins=[i for i in range(20)] )
+	fig.suptitle('n protons')
+	ax.set_xlabel('n')
+	fig.savefig(prefix+'n_protons.png')
+
+
+
+
+	proton_counts = np.array(data['n_protons'])
+	all_contained = data['all_contained']
+	all_q = []
+	all_energies = []
+	all_contained_q_e = []
+	energy_data = data['nu_i_energy']
+	q_data = data['q']
+	for inp in range(len(pion_bins)-1):
+		qs = []
+		energies = []
+		contained_q_e = []
+		for iEvent in range(len(proton_counts)):
+			if proton_counts[iEvent] >= pion_bins[inp] and proton_counts[iEvent] < pion_bins[inp+1]:
+				qs.append(q_data[iEvent])
+				energies.append(energy_data[iEvent])
+				contained_q_e.append(all_contained[iEvent])
+		all_q.append(qs)
+		all_energies.append(energies)
+		all_contained_q_e.append(contained_q_e)
+
+	fig = plt.figure()
+	ax = fig.add_subplot()
+	fig.suptitle('Containment vs. Energy Transfer by Proton Production')
+	q_c_min, q_c_max = 0, 3000
+	q_c_bins = 25
+	for iplt in range(len(all_q)):
+		norms, edges = np.histogram(all_q[iplt], bins=q_c_bins, range=(q_c_min, q_c_max))
+		contained, edges = np.histogram(all_q[iplt], bins=q_c_bins, range=(q_c_min, q_c_max), weights=np.array(np.array(all_contained_q_e[iplt]).astype(int) ))
+		fraction = np.divide(contained, norms)
+		mdpnts = edges[:-1] + np.diff(edges)/2
+		plt.plot(mdpnts, fraction, label=str(iplt)+'p' if iplt < len(all_q)-1 else str(iplt)+'+p')
+	ax.legend()
+	ax.set_xlabel('$\omega$ [MeV]')
+	fig.savefig(prefix+'Q_n_protons_containment.png')
+	plt.close(fig)
 
 
 
 	f.close()
 
 	#plot 2d containment vs W and q
+
 
 
 

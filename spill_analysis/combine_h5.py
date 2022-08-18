@@ -1,20 +1,17 @@
 import util
-import acceptance
-import matplotlib.pyplot as plt
 import argparse
-import numpy as np
 import time
 import h5py
 import sys
-import scipy as sp
 import timeit
 import os
+import numpy as np
 
 _defualt_plot_dir = 'plots'\
 
 data_type = dtype=np.dtype( \
 		[("eventID","u4"),("contained","i4"),("W","f8"),
-         ("visible_energy","f8"), ("n_pions", "i4"), ("nu_i", "i4"), 
+         ("visible_energy","f8"), ("n_pions", "i4"), ("n_protons", "i4"), ("nu_i", "i4"), 
          ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), 
          ("fs", "i4"), ("fs_energy_sum", "f8"), ("all_contained", "i4")]) 
 
@@ -39,13 +36,14 @@ def main(dirname, name='data', combined_file_name='combined.h5'):
 	initHDF5File(combined_file, name)
 
 	for ifile, file in enumerate(files):
-		print(file)
-		with h5py.File(file, 'r') as f:
-			data = f[name]
-
-			updateHDF5File(combined_file, name, data)
-
-		
+		try:
+			print(file)
+			with h5py.File(file, 'r') as f:
+				data = f[name]
+				test_data = data[0:10]
+				updateHDF5File(combined_file, name, data)
+		except:
+			print('cant use:', file)
 	return
 
 
