@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import util
 import acceptance
 import matplotlib.pyplot as plt
