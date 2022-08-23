@@ -284,23 +284,11 @@ def single_particle_contained(tr, _segments, _trajectories):
 
 	contained_mask_2x2_only = get_active_lar_mask(segments['x_start'], segments['y_start'], segments['z_start'])
 	contained_2x2_only_flag = not any(np.logical_not(contained_mask_2x2_only))
-
-	high_energy_flag = False
-	if not_contained_flag:
-		tr_set = set( segments['trackID'][np.logical_not(contained_mask)])
-		for _tr in tr_set:
-			this_traj = _trajectories[_trajectories['trackID']==_tr][0]
-			e = trajectory_energy(this_traj)
-			if e > 1.0: #1.0 MeV cut to say an escaping particle is negligable
-				high_energy_flag = True
-
-		if not high_energy_flag: not_contained_flag = False
+	active_minerva_mask = get_minerva_mask(segments['x_start'], segments['y_start'], segments['z_start'])
 
 	if not not_contained_flag: #marked as contained
-		active_minerva_mask = get_minerva_mask(segments['x_start'], segments['y_start'], segments['z_start'])
 		if any(np.logical_not(contained_mask_2x2_only)) and (not any(active_minerva_mask)):
 			not_contained_flag = True
-
 
 ########################################################
 	mu_tag = False 
@@ -381,6 +369,7 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 	all_particle_stack = _all_particle_stack['eventID', 'p4', 'status', 'pdgId']
 	all_event_ids = set(all_trajectories['eventID'])
 	data = np.empty( len(all_event_ids), dtype=datatype)
+	counter = 0
 
 
 	max_evdid = len(all_event_ids)
@@ -391,6 +380,8 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 	#	if eventN > 100: return data
 
 		_trajectories = all_trajectories[all_trajectories['eventID']==eventN]
+		_trajectories = _trajectories[ np.logical_not(_trajectories['pdgId']==2112) ] #IGNORE NEUTRONS
+		#_trajectories = _trajectories[ [True if (np.linalg.norm(traj['pxyz_start']) > 2.0 and not(traj['parentID']==-1)) else False for traj in _trajectories] ]
 		_segments = all_segments[all_segments['eventID']==eventN]
 		_stack = all_particle_stack[all_particle_stack['eventID']==eventN]
 

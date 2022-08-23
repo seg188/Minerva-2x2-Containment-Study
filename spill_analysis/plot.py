@@ -32,7 +32,7 @@ def plot(filename, plotdir, fieldname='data'):
 	norms, edges = np.histogram(data['nu_i_energy'], bins=n_ebins, range=(e_min, e_max))
 	mdpnts = edges[:-1] + np.diff(edges)/2
 	normalized = np.divide(vals,norms)
-	ax.plot(mdpnts, normalized)
+	ax.plot(mdpnts, normalized, drawstyle='steps-mid')
 	ax.set_xlabel('Nu Energy [MeV]')
 	ax.set_ylabel('Containment Fraction')
 	fig.savefig(prefix+'containment_vs_enu.png')
@@ -45,7 +45,7 @@ def plot(filename, plotdir, fieldname='data'):
 	norms, edges = np.histogram(data['q'], bins=n_qbins, range=(q_min, q_max))
 	mdpnts = edges[:-1] + np.diff(edges)/2
 	normalized = np.divide(vals,norms)
-	ax.plot(mdpnts, normalized)
+	ax.plot(mdpnts, normalized, drawstyle='steps-mid')
 	ax.set_xlabel('$\omega$ [MeV]')
 	ax.set_ylabel('Containment Fraction')
 	fig.savefig(prefix + 'containment_vs_q.png')
@@ -200,7 +200,7 @@ def plot(filename, plotdir, fieldname='data'):
 		contained, edges = np.histogram(all_q[iplt], bins=q_c_bins, range=(q_c_min, q_c_max), weights=np.array(np.array(all_contained_q_e[iplt]).astype(int) ))
 		fraction = np.divide(contained, norms)
 		mdpnts = edges[:-1] + np.diff(edges)/2
-		plt.plot(mdpnts, fraction, label=labels[iplt])
+		plt.plot(mdpnts, fraction, label=labels[iplt], drawstyle='steps-mid')
 	ax.legend()
 	ax.set_xlabel('$\omega$ [MeV]')
 	fig.savefig(prefix+'Q_n_pions_containment.png')
@@ -243,6 +243,7 @@ def plot(filename, plotdir, fieldname='data'):
 	fig.suptitle('$Q^2$')
 	ax.set_xlabel('$Q^2$ [MeV]')
 	fig.savefig(prefix+'q2.png')
+	plt.close(fig)
 
 	fig = plt.figure()
 	ax = fig.add_subplot()
@@ -250,9 +251,7 @@ def plot(filename, plotdir, fieldname='data'):
 	fig.suptitle('n protons')
 	ax.set_xlabel('n')
 	fig.savefig(prefix+'n_protons.png')
-
-
-
+	plt.close(fig)
 
 	proton_counts = np.array(data['n_protons'])
 	all_contained = data['all_contained']
@@ -284,12 +283,211 @@ def plot(filename, plotdir, fieldname='data'):
 		contained, edges = np.histogram(all_q[iplt], bins=q_c_bins, range=(q_c_min, q_c_max), weights=np.array(np.array(all_contained_q_e[iplt]).astype(int) ))
 		fraction = np.divide(contained, norms)
 		mdpnts = edges[:-1] + np.diff(edges)/2
-		plt.plot(mdpnts, fraction, label=str(iplt)+'p' if iplt < len(all_q)-1 else str(iplt)+'+p')
+		plt.plot(mdpnts, fraction, label=str(iplt)+'p' if iplt < len(all_q)-1 else str(iplt)+'+p', drawstyle='steps-mid')
 	ax.legend()
 	ax.set_xlabel('$\omega$ [MeV]')
 	fig.savefig(prefix+'Q_n_protons_containment.png')
 	plt.close(fig)
 
+
+	fig = plt.figure(figsize=(10,8))
+	fig.suptitle('Containment by Pion Production, W-$Q^2$ Plane')
+	ax0 = fig.add_subplot(221)
+	ax0.set_title('0 Pion Production')
+	ax0.set_xlabel('W')
+	ax0.set_ylabel('$Q^2$')
+	ax1 = fig.add_subplot(222)
+	ax1.set_title('1 Pion Production')
+	ax1.set_xlabel('W')
+	ax1.set_ylabel('$Q^2$')
+	ax2 = fig.add_subplot(223)
+	ax2.set_title('2 Pion Production')
+	ax2.set_xlabel('W')
+	ax2.set_ylabel('$Q^2$')
+	ax3 = fig.add_subplot(224)
+	ax3.set_title('3 Pion Production')
+	ax3.set_xlabel('W')
+	ax3.set_ylabel('$Q^2$')
+	axs = [ax0, ax1, ax2, ax3]
+	for pion_count in [0, 1, 2, 3]:
+		correct_pion_mask = np.array(data['n_pions'])==pion_count
+		w_data = np.array(data['W'])[correct_pion_mask]
+		q2_data = np.array(data['q2'])[correct_pion_mask]
+		hist2d, edges2d = np.histogramdd([w_data, q2_data], weights=np.array(data['all_contained'].astype(int))[correct_pion_mask], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))
+		norm_hist2d, edges2d = np.histogramdd([w_data, q2_data], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+		scaled_hist2d = np.divide(hist2d, norm_hist2d)
+		im = axs[pion_count].imshow(np.transpose(scaled_hist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+		cbar = fig.colorbar(im, ax=axs[pion_count])
+
+	plt.savefig(prefix+'full_containment_by_pions.png')
+	plt.close(fig)
+
+
+	fig = plt.figure(figsize=(10,8))
+	fig.suptitle('2x2 Only Containment by Pion Production, W-$Q^2$ Plane')
+	ax0 = fig.add_subplot(221)
+	ax0.set_title('0 Pion Production')
+	ax0.set_xlabel('W')
+	ax0.set_ylabel('$Q^2$')
+	ax1 = fig.add_subplot(222)
+	ax1.set_title('1 Pion Production')
+	ax1.set_xlabel('W')
+	ax1.set_ylabel('$Q^2$')
+	ax2 = fig.add_subplot(223)
+	ax2.set_title('2 Pion Production')
+	ax2.set_xlabel('W')
+	ax2.set_ylabel('$Q^2$')
+	ax3 = fig.add_subplot(224)
+	ax3.set_title('3 Pion Production')
+	ax3.set_xlabel('W')
+	ax3.set_ylabel('$Q^2$')
+	axs = [ax0, ax1, ax2, ax3]
+	for pion_count in [0, 1, 2, 3]:
+		correct_pion_mask = np.array(data['n_pions'])==pion_count
+		w_data = np.array(data['W'])[correct_pion_mask]
+		q2_data = np.array(data['q2'])[correct_pion_mask]
+		hist2d, edges2d = np.histogramdd([w_data, q2_data], weights=np.array(data['all_contained_2x2_only'].astype(int))[correct_pion_mask], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))
+		norm_hist2d, edges2d = np.histogramdd([w_data, q2_data], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+		scaled_hist2d = np.divide(hist2d, norm_hist2d)
+		im = axs[pion_count].imshow(np.transpose(scaled_hist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+		cbar = fig.colorbar(im, ax=axs[pion_count])
+
+	plt.savefig(prefix+'2x2_only_containment_by_pions.png')
+	plt.close(fig)
+
+
+	fig = plt.figure(figsize=(10,8))
+	fig.suptitle('Containment by Pi0 Production, W-$Q^2$ Plane')
+	ax0 = fig.add_subplot(221)
+	ax0.set_title('0 Pi0 Production')
+	ax0.set_xlabel('W')
+	ax0.set_ylabel('$Q^2$')
+	ax1 = fig.add_subplot(222)
+	ax1.set_title('1 Pi0 Production')
+	ax1.set_xlabel('W')
+	ax1.set_ylabel('$Q^2$')
+	ax2 = fig.add_subplot(223)
+	ax2.set_title('2 Pi0 Production')
+	ax2.set_xlabel('W')
+	ax2.set_ylabel('$Q^2$')
+	ax3 = fig.add_subplot(224)
+	ax3.set_title('3 Pi0 Production')
+	ax3.set_xlabel('W')
+	ax3.set_ylabel('$Q^2$')
+	axs = [ax0, ax1, ax2, ax3]
+	for pion_count in [0, 1, 2, 3]:
+		correct_pion_mask = np.array(data['n_pi0'])==pion_count
+		w_data = np.array(data['W'])[correct_pion_mask]
+		q2_data = np.array(data['q2'])[correct_pion_mask]
+		hist2d, edges2d = np.histogramdd([w_data, q2_data], weights=np.array(data['all_contained'].astype(int))[correct_pion_mask], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))
+		norm_hist2d, edges2d = np.histogramdd([w_data, q2_data], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+		scaled_hist2d = np.divide(hist2d, norm_hist2d)
+		im = axs[pion_count].imshow(np.transpose(scaled_hist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+		cbar = fig.colorbar(im, ax=axs[pion_count])
+
+	plt.savefig(prefix+'full_containment_by_n_pi0.png')
+	plt.close(fig)
+
+
+	fig = plt.figure(figsize=(10,8))
+	fig.suptitle('2x2 Only Containment by Pi0 Production, W-$Q^2$ Plane')
+	ax0 = fig.add_subplot(221)
+	ax0.set_title('0 Pi0 Production')
+	ax0.set_xlabel('W')
+	ax0.set_ylabel('$Q^2$')
+	ax1 = fig.add_subplot(222)
+	ax1.set_title('1 Pi0 Production')
+	ax1.set_xlabel('W')
+	ax1.set_ylabel('$Q^2$')
+	ax2 = fig.add_subplot(223)
+	ax2.set_title('2 Pi0 Production')
+	ax2.set_xlabel('W')
+	ax2.set_ylabel('$Q^2$')
+	ax3 = fig.add_subplot(224)
+	ax3.set_title('3 Pi0 Production')
+	ax3.set_xlabel('W')
+	ax3.set_ylabel('$Q^2$')
+	axs = [ax0, ax1, ax2, ax3]
+	for pion_count in [0, 1, 2, 3]:
+		correct_pion_mask = np.array(data['n_pi0'])==pion_count
+		w_data = np.array(data['W'])[correct_pion_mask]
+		q2_data = np.array(data['q2'])[correct_pion_mask]
+		hist2d, edges2d = np.histogramdd([w_data, q2_data], weights=np.array(data['all_contained_2x2_only'].astype(int))[correct_pion_mask], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))
+		norm_hist2d, edges2d = np.histogramdd([w_data, q2_data], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+		scaled_hist2d = np.divide(hist2d, norm_hist2d)
+		im = axs[pion_count].imshow(np.transpose(scaled_hist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+		cbar = fig.colorbar(im, ax=axs[pion_count])
+
+	#plt.show()
+	plt.savefig(prefix+'2x2_only_containment_by_n_pi0.png')
+	plt.close(fig)
+
+
+	fig = plt.figure(figsize=(10,8))
+	fig.suptitle('Containment by Charged Pion Production, W-$Q^2$ Plane')
+	ax0 = fig.add_subplot(221)
+	ax0.set_title('0 Pi Production')
+	ax0.set_xlabel('W')
+	ax0.set_ylabel('$Q^2$')
+	ax1 = fig.add_subplot(222)
+	ax1.set_title('1 Pi Production')
+	ax1.set_xlabel('W')
+	ax1.set_ylabel('$Q^2$')
+	ax2 = fig.add_subplot(223)
+	ax2.set_title('2 Pi Production')
+	ax2.set_xlabel('W')
+	ax2.set_ylabel('$Q^2$')
+	ax3 = fig.add_subplot(224)
+	ax3.set_title('3 Pi Production')
+	ax3.set_xlabel('W')
+	ax3.set_ylabel('$Q^2$')
+	axs = [ax0, ax1, ax2, ax3]
+	for pion_count in [0, 1, 2, 3]:
+		correct_pion_mask = (np.array(data['n_pions']) - np.array(data['n_pi0']))==pion_count
+		w_data = np.array(data['W'])[correct_pion_mask]
+		q2_data = np.array(data['q2'])[correct_pion_mask]
+		hist2d, edges2d = np.histogramdd([w_data, q2_data], weights=np.array(data['all_contained'].astype(int))[correct_pion_mask], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))
+		norm_hist2d, edges2d = np.histogramdd([w_data, q2_data], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+		scaled_hist2d = np.divide(hist2d, norm_hist2d)
+		im = axs[pion_count].imshow(np.transpose(scaled_hist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+		cbar = fig.colorbar(im, ax=axs[pion_count])
+
+	plt.savefig(prefix+'full_containment_by_n_charged_pions.png')
+	plt.close(fig)
+
+
+	fig = plt.figure(figsize=(10,8))
+	fig.suptitle('2x2 Only Containment by Charged Pion Production, W-$Q^2$ Plane')
+	ax0 = fig.add_subplot(221)
+	ax0.set_title('0 Pi Production')
+	ax0.set_xlabel('W')
+	ax0.set_ylabel('$Q^2$')
+	ax1 = fig.add_subplot(222)
+	ax1.set_title('1 Pi Production')
+	ax1.set_xlabel('W')
+	ax1.set_ylabel('$Q^2$')
+	ax2 = fig.add_subplot(223)
+	ax2.set_title('2 Pi Production')
+	ax2.set_xlabel('W')
+	ax2.set_ylabel('$Q^2$')
+	ax3 = fig.add_subplot(224)
+	ax3.set_title('3 Pi Production')
+	ax3.set_xlabel('W')
+	ax3.set_ylabel('$Q^2$')
+	axs = [ax0, ax1, ax2, ax3]
+	for pion_count in [0, 1, 2, 3]:
+		correct_pion_mask = (np.array(data['n_pions']) - np.array(data['n_pi0']))==pion_count
+		w_data = np.array(data['W'])[correct_pion_mask]
+		q2_data = np.array(data['q2'])[correct_pion_mask]
+		hist2d, edges2d = np.histogramdd([w_data, q2_data], weights=np.array(data['all_contained_2x2_only'].astype(int))[correct_pion_mask], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))
+		norm_hist2d, edges2d = np.histogramdd([w_data, q2_data], bins=(int(w_nbins/1.5), int(q2_nbins/1.5)), range=( (w_min, w_max), (q2_min, q2_max) ))		
+		scaled_hist2d = np.divide(hist2d, norm_hist2d)
+		im = axs[pion_count].imshow(np.transpose(scaled_hist2d), interpolation='nearest', extent=[min(qwedges2d[0]), max(qwedges2d[0]), min(qwedges2d[1]), max(qwedges2d[1])],  aspect='auto',origin='lower')
+		cbar = fig.colorbar(im, ax=axs[pion_count])
+
+	#plt.show()
+	plt.savefig(prefix+'2x2_only_containment_by_charged_pions.png')
+	plt.close(fig)
 
 
 	f.close()
