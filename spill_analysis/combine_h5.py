@@ -9,10 +9,10 @@ import numpy as np
 
 _defualt_plot_dir = 'plots'\
 
-data_type = dtype=np.dtype( \
-		[("eventID","u4"),("contained","i4"),("W","f8"),
-         ("visible_energy","f8"), ("n_pions", "i4"), ("n_pi0", "i4"), ("n_protons", "i4"), ("nu_i", "i4"), 
-         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), 
+data_type = np.dtype( \
+		[("eventID","u4"),("contained","i4"),("W","f8"), ("lt_10cm","i4"),
+         ("visible_energy","f8"), ("n_pions", "i4"), ("n_pi0", "i4"), ("n_protons", "i4"), ("nu_i", "i4"), ##add neutral pion count
+         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), ("p1_p", "f8"), ("p1_theta", "f8"), ("p2_p", "f8"), ("p2_theta", "f8"),  
          ("fs", "i4"), ("fs_energy_sum", "f8"), ("all_contained", "i4"), ("all_contained_2x2_only", "i4")]) 
 
 

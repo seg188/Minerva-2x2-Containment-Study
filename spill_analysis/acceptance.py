@@ -22,9 +22,10 @@ file['segments'] -->
 '''
 
 datatype = np.dtype( \
-		[("eventID","u4"),("contained","i4"),("W","f8"),
+		[("eventID","u4"),("contained","i4"),("W","f8"), ("lt_10cm","i4"), 
+		 ("fs_e", "f8"), ("fs_theta", "f8"), ("v_x", "f8"), ("v_y", "f8"), ("v_z", "f8"), 
          ("visible_energy","f8"), ("n_pions", "i4"), ("n_pi0", "i4"), ("n_protons", "i4"), ("nu_i", "i4"), ##add neutral pion count
-         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), 
+         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), ("p1_p", "f8"), ("p1_theta", "f8"), ("p2_p", "f8"), ("p2_theta", "f8"),  
          ("fs", "i4"), ("fs_energy_sum", "f8"), ("all_contained", "i4"), ("all_contained_2x2_only", "i4")]) 
 
 def energy(p, m):
@@ -142,6 +143,9 @@ def get_muon_tag(segments, eventN):
 
 def get_theta(px, py, pz):#azimuthal angle, taking z as beam direction
 	return np.arccos( pz/np.sqrt(px**2+py**2+pz**2) )
+
+def get_theta_p(p):
+	return get_theta(p[0], p[1], p[2])
 
 def get_phi(px, py, pz):#azimuthal angle, taking z as beam direction
 	return np.arctan2(py, px)
@@ -362,11 +366,13 @@ def v4_norm(v4):
 
 
 def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _all_vertices):
+	#need to fille: ("fs_e", "f8"), ("fs_theta", "f8")
 
 	ignore_particle_ids = [2112, 12, 14, 16, -12, -14, -16]
 	all_segments = _all_segments['eventID', 'trackID', 'dE', 'dEdx', 'x_start', 'y_start', 'z_start', 'z_end']
 	all_trajectories = _all_trajectories['eventID', 'trackID', 'parentID', 'xyz_start', 'pxyz_start', 'pdgId']
 	all_particle_stack = _all_particle_stack['eventID', 'p4', 'status', 'pdgId']
+	all_vertices = _all_vertices['eventID','x_vert', 'y_vert', 'z_vert']
 	all_event_ids = set(all_trajectories['eventID'])
 	data = np.empty( len(all_event_ids), dtype=datatype)
 	counter = 0
@@ -376,6 +382,7 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 	nevents = 0.0
 	total_times = 0.0
 	for idata, eventN in enumerate(all_event_ids):
+
 		start = time.time()
 	#	if eventN > 100: return data
 
@@ -384,6 +391,11 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 		#_trajectories = _trajectories[ [True if (np.linalg.norm(traj['pxyz_start']) > 2.0 and not(traj['parentID']==-1)) else False for traj in _trajectories] ]
 		_segments = all_segments[all_segments['eventID']==eventN]
 		_stack = all_particle_stack[all_particle_stack['eventID']==eventN]
+		_vertices = all_vertices[all_vertices['eventID']==eventN]
+
+		data[idata]['v_x'] = _vertices['x_vert'][0]
+		data[idata]['v_y'] = _vertices['y_vert'][0]
+		data[idata]['v_z'] = _vertices['z_vert'][0]
 
 		fs_stack = _stack[_stack['status']==1]
 		i_stack = _stack[_stack['status']==0]
@@ -408,17 +420,48 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 		n_pi0 = 0
 		n_protons = 0
 		final_energy = 0
+		pion_dict = {}
 		for ipart,pdg in enumerate(fs_stack['pdgId']):
 			if pdg in [12, -12, 14, -14, 11, -11, 13, -13]:
-				if not found_fs: data[idata]['fs'] = pdg #FIX ME!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
-				found_fs = True
 				final_energy = fs_stack[ipart]['p4'][3]*GeV
 				fs_p4 = fs_stack[ipart]['p4']*GeV
 				mass = particle.Particle.from_pdgid(pdg).mass
+				theta = get_theta_p(fs_stack['p4'][ipart][:-1])
+
+				if not found_fs: #
+					data[idata]['fs'] = pdg #FIX ME!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+					data[idata]['fs_e'] = final_energy
+					data[idata]['fs_theta'] = theta
+
+				else:
+					data[idata]['fs'] = -1
+					data[idata]['fs_e'] = -1
+					data[idata]['fs_theta'] = -1
+
+				found_fs = True
 				
 			if pdg in [211, -211, 111]: n_pions += 1
+			if np.absolute(pdg)==211:
+				pion_dict[fs_stack['p4'][ipart][3]] = get_theta_p(fs_stack['p4'][ipart][:-1])
 			if pdg == 111: n_pi0 += 1
 			if pdg == 2212: n_protons += 1
+
+		sorted_pions = sorted(list(pion_dict.keys()), reverse=True)
+		if len(sorted_pions) == 0:
+			data[idata]['p1_p'] = -1
+			data[idata]['p2_p'] = -1
+			data[idata]['p1_theta'] = -1
+			data[idata]['p2_theta'] = -1
+		elif len(sorted_pions) == 1:
+			data[idata]['p1_p'] = sorted_pions[0]
+			data[idata]['p1_theta'] = pion_dict[sorted_pions[0]]
+			data[idata]['p2_p'] = -1
+			data[idata]['p2_theta'] = -1
+		else:
+			data[idata]['p1_p'] = sorted_pions[0]
+			data[idata]['p1_theta'] = pion_dict[sorted_pions[0]]
+			data[idata]['p2_p'] = sorted_pions[1]
+			data[idata]['p2_theta'] = pion_dict[sorted_pions[1]]
 
 		if not found_fs: data[idata]['fs'] = 0
 		
