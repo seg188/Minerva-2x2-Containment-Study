@@ -22,11 +22,13 @@ file['segments'] -->
 '''
 
 datatype = np.dtype( \
-		[("eventID","u4"),("contained","i4"),("W","f8"), ("lt_10cm","i4"), 
+		[("eventID","u4"),("contained","i4"),("W","f8"), ("lt_10cm","i4"), ("n_vtx_particles","i4"), 
 		 ("fs_e", "f8"), ("fs_theta", "f8"), ("v_x", "f8"), ("v_y", "f8"), ("v_z", "f8"), 
          ("visible_energy","f8"), ("n_pions", "i4"), ("n_pi0", "i4"), ("n_protons", "i4"), ("nu_i", "i4"), ##add neutral pion count
-         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), ("p1_p", "f8"), ("p1_theta", "f8"), ("p2_p", "f8"), ("p2_theta", "f8"),  
-         ("fs", "i4"), ("fs_energy_sum", "f8"), ("all_contained", "i4"), ("all_contained_2x2_only", "i4")]) 
+         ("nu_i_energy", "f8"), ("q", "f8"), ("q2", "f8"), ("p1_p", "f8"), ("p1_theta", "f8"), ("p1_phi", "f8"), ("p2_p", "f8"), ("p2_theta", "f8"), ("p2_phi", "f8"),  
+         ("pions_contained", "i4"), ("pr1_p", "f8"), ("pr1_theta", "f8"), ("cs", "i4"), ("containment_threshold", "f8"), ("containment_threshold_2x2", "f8"), 
+         ("fs", "i4"), ("fs_energy_sum", "f8"), ("fs_contained", "i4"), ("all_contained", "i4"), ("all_but_fs_contained_2x2_only", "i4"), ("all_contained_2x2_only", "i4")]) 
+
 
 def energy(p, m):
 	return np.sqrt(p**2+m**2)
@@ -273,6 +275,7 @@ def v_distance_to_line(_line_direction, midpt, pt):
 		return np.linalg.norm(vector_to_line)
 	return np.vectorize(distance_to_line)(pt)
 
+
 def single_particle_contained(tr, _segments, _trajectories):
 	#all decedent particles from initial particle
 	lineage = get_all_lineage(tr['trackID'], _trajectories)
@@ -282,17 +285,56 @@ def single_particle_contained(tr, _segments, _trajectories):
 	#get all segments corresponding to those particles
 	edeps_mask = contained_in_list_mask(_segments['trackID'], list(lineage)+[tr['trackID']])
 	segments = _segments[edeps_mask]
-
 	contained_mask = get_detector_containment_mask(segments['x_start'], segments['y_start'], segments['z_start'])
+
+	uncontained_trids = list(set(segments['trackID'][np.logical_not(contained_mask)]))
+
+	es = [-1]
+	for trid in uncontained_trids:
+		traj = _trajectories[_trajectories['trackID']==trid]
+		es.append(np.linalg.norm(traj['pxyz_start'][0]))
+
+	offending_track = max(es) 
+
 	not_contained_flag = any(np.logical_not(contained_mask))
 
 	contained_mask_2x2_only = get_active_lar_mask(segments['x_start'], segments['y_start'], segments['z_start'])
+
+	uncontained_trids_2x2 = list(set(segments['trackID'][np.logical_not(contained_mask_2x2_only)]))
+
+	es = [-1]
+	for trid in uncontained_trids_2x2:
+		traj = _trajectories[_trajectories['trackID']==trid]
+		es.append(np.linalg.norm(traj['pxyz_start'][0]))
+
+	offending_track_2x2 = max(es) 
+
 	contained_2x2_only_flag = not any(np.logical_not(contained_mask_2x2_only))
 	active_minerva_mask = get_minerva_mask(segments['x_start'], segments['y_start'], segments['z_start'])
 
 	if not not_contained_flag: #marked as contained
 		if any(np.logical_not(contained_mask_2x2_only)) and (not any(active_minerva_mask)):
 			not_contained_flag = True
+			outside_active = np.logical_and(np.logical_not(contained_mask_2x2_only), np.logical_not(active_minerva_mask)) #segments outside of minerva and 2x2
+			inside_active = active_minerva_mask
+
+			outside_trajectories = set(segments['trackID'][outside_active])
+			inside_trajectories = set(segments['trackID'][inside_active])
+
+			uncontained = list(outside_trajectories- inside_trajectories)
+			es = [-1]
+			for trid in uncontained:
+				traj = _trajectories[_trajectories['trackID']==trid]
+				es.append(np.linalg.norm(traj['pxyz_start'][0]))
+
+			offending_track= max(es)
+
+			if offending_track==-1: offending_track==9999999
+
+
+			#get the energies of these trajectories--the max of these needs to be the containment threshold, now
+
+
 
 ########################################################
 	mu_tag = False 
@@ -313,7 +355,7 @@ def single_particle_contained(tr, _segments, _trajectories):
 				max_pca = max(pca.explained_variance_ratio_)
 				if max_pca < 0.85:
 					mu_tag = False
-					return not not_contained_flag, contained_2x2_only_flag
+					return not not_contained_flag, contained_2x2_only_flag, offending_track, offending_track_2x2
 
 			pca_done = False
 			if mu_tag:
@@ -328,7 +370,7 @@ def single_particle_contained(tr, _segments, _trajectories):
 						total_edep_this_subdet = np.sum(hits['dE'])
 						if total_edep_this_subdet > 4000: 
 							mu_tag = False
-							return not not_contained_flag, contained_2x2_only_flag
+							return not not_contained_flag, contained_2x2_only_flag, offending_track, offending_track_2x2
 
 					#fit the pts to a line, ensure least squares is low, average dE/dx in line direction is low
 						hits_array = np.array( [hits['x_start'], hits['y_start'], hits['z_start']] )
@@ -341,7 +383,7 @@ def single_particle_contained(tr, _segments, _trajectories):
 					#	all_dedx.append(sum_of_squares)
 						if sum_of_squares > 20000:
 							mu_tag = False
-							return not not_contained_flag, contained_2x2_only_flag
+							return not not_contained_flag, contained_2x2_only_flag, offending_track, offending_track_2x2
 
 						if len(hits) > 5:
 							if pca_done: second_pca_done = True
@@ -352,13 +394,13 @@ def single_particle_contained(tr, _segments, _trajectories):
 							max_ratio = max(pca.explained_variance_ratio_)
 							if max_ratio < 0.9:
 								mu_tag = False
-								return not not_contained_flag, contained_2x2_only_flag
+								return not not_contained_flag, contained_2x2_only_flag, offending_track, offending_track_2x2
 		else:
 			mu_tag = False
 
 
 
-	return ( (not not_contained_flag) or mu_tag ), contained_2x2_only_flag
+	return ( (not not_contained_flag) or mu_tag ), contained_2x2_only_flag, offending_track, offending_track_2x2
 
 	
 def v4_norm(v4):
@@ -366,7 +408,7 @@ def v4_norm(v4):
 
 
 def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _all_vertices):
-	#need to fille: ("fs_e", "f8"), ("fs_theta", "f8")
+	#need to fill: ("containment_threshold", "f8"), ("containment_threshold_2x2", "f8"),
 
 	ignore_particle_ids = [2112, 12, 14, 16, -12, -14, -16]
 	all_segments = _all_segments['eventID', 'trackID', 'dE', 'dEdx', 'x_start', 'y_start', 'z_start', 'z_end']
@@ -380,15 +422,18 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 
 	max_evdid = len(all_event_ids)
 	nevents = 0.0
+	n2x2=0
 	total_times = 0.0
 	for idata, eventN in enumerate(all_event_ids):
-
 		start = time.time()
 	#	if eventN > 100: return data
 
 		_trajectories = all_trajectories[all_trajectories['eventID']==eventN]
 		_trajectories = _trajectories[ np.logical_not(_trajectories['pdgId']==2112) ] #IGNORE NEUTRONS
-		#_trajectories = _trajectories[ [True if (np.linalg.norm(traj['pxyz_start']) > 2.0 and not(traj['parentID']==-1)) else False for traj in _trajectories] ]
+		_trajectories = _trajectories[ [ True if np.linalg.norm(traj['pxyz_start']) > 10.0 else False for traj in _trajectories ] ]
+		#for traj in _trajectories:
+		#	print(np.linalg.norm(traj['pxyz_start']))
+
 		_segments = all_segments[all_segments['eventID']==eventN]
 		_stack = all_particle_stack[all_particle_stack['eventID']==eventN]
 		_vertices = all_vertices[all_vertices['eventID']==eventN]
@@ -421,7 +466,11 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 		n_protons = 0
 		final_energy = 0
 		pion_dict = {}
+		proton_dict = {}
+		data[idata]['cs'] = 0
+
 		for ipart,pdg in enumerate(fs_stack['pdgId']):
+			if pdg in strange_and_charmed: data[idata]['cs'] = 1
 			if pdg in [12, -12, 14, -14, 11, -11, 13, -13]:
 				final_energy = fs_stack[ipart]['p4'][3]*GeV
 				fs_p4 = fs_stack[ipart]['p4']*GeV
@@ -442,28 +491,46 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 				
 			if pdg in [211, -211, 111]: n_pions += 1
 			if np.absolute(pdg)==211:
-				pion_dict[fs_stack['p4'][ipart][3]] = get_theta_p(fs_stack['p4'][ipart][:-1])
+				pion_dict[fs_stack['p4'][ipart][3]] = [get_theta_p(fs_stack['p4'][ipart][:-1]), np.arctan(fs_stack['p4'][ipart][1]/fs_stack['p4'][ipart][0]), ipart]
 			if pdg == 111: n_pi0 += 1
-			if pdg == 2212: n_protons += 1
+			if pdg == 2212: 
+				proton_dict[fs_stack['p4'][ipart][3]] = get_theta_p(fs_stack['p4'][ipart][:-1])
+				n_protons += 1
 
 		sorted_pions = sorted(list(pion_dict.keys()), reverse=True)
+		sorted_protons = sorted(list(proton_dict.keys()), reverse=True)
 		if len(sorted_pions) == 0:
 			data[idata]['p1_p'] = -1
 			data[idata]['p2_p'] = -1
 			data[idata]['p1_theta'] = -1
 			data[idata]['p2_theta'] = -1
+			data[idata]['p1_phi'] = -1
+			data[idata]['p2_phi'] = -1
 		elif len(sorted_pions) == 1:
 			data[idata]['p1_p'] = sorted_pions[0]
-			data[idata]['p1_theta'] = pion_dict[sorted_pions[0]]
+			data[idata]['p1_theta'] = pion_dict[sorted_pions[0]][0]
+			data[idata]['p1_phi'] = pion_dict[sorted_pions[0]][1]
 			data[idata]['p2_p'] = -1
 			data[idata]['p2_theta'] = -1
+			data[idata]['p2_phi'] = -1
 		else:
 			data[idata]['p1_p'] = sorted_pions[0]
-			data[idata]['p1_theta'] = pion_dict[sorted_pions[0]]
+			data[idata]['p1_theta'] = pion_dict[sorted_pions[0]][0]
+			data[idata]['p1_phi'] = pion_dict[sorted_pions[0]][1]
 			data[idata]['p2_p'] = sorted_pions[1]
-			data[idata]['p2_theta'] = pion_dict[sorted_pions[1]]
+			data[idata]['p2_theta'] = pion_dict[sorted_pions[1]][0]
+			data[idata]['p2_phi'] = pion_dict[sorted_pions[1]][1]
+
+		if len(sorted_protons)==0:
+			data[idata]['pr1_p'] = -1
+			data[idata]['pr1_theta'] = -1
+		else:
+			data[idata]['pr1_p'] = sorted_protons[0]
+			data[idata]['pr1_theta'] = proton_dict[sorted_protons[0]]
 
 		if not found_fs: data[idata]['fs'] = 0
+
+		data[idata]['n_vtx_particles']=len(fs_stack['pdgId'])
 		
 		nucleon_stack =  _stack[_stack['status']==11]
 		nucleon = None
@@ -498,23 +565,47 @@ def containment_study(_all_segments, _all_trajectories, _all_particle_stack, _al
 
 		contained = []
 		contained_2x2_only = []
+		fs_contained  = False
+		pions_contained = []
+		
+		all_es = []
+		all_es_2x2 = []
 		for tr in fs_trajectories:
-			cont, cont_2x2 = single_particle_contained(tr, _segments, _trajectories)
+			cont, cont_2x2, off_e, off_e_2x2 = single_particle_contained(tr, _segments, _trajectories)
+			all_es_2x2.append(off_e_2x2)
+			all_es.append(off_e)
 			contained.append(cont)
 			if (is_muon(tr['pdgId']) and cont): cont_2x2 = True 
 			contained_2x2_only.append(cont_2x2)
+			if np.absolute(tr['pdgId']) in [12, 13, 14]: fs_contained = cont
+			if np.absolute(tr['pdgId'])==211: pions_contained.append(cont_2x2)
+
 		#if not all(contained):
 		#	print('***', eventN, '***')
 		#	for itr, tr in enumerate(fs_trajectories):
 		#		print('p:', np.linalg.norm(tr['pxyz_start']), ' --- pdg:', tr['pdgId'], '--- contained?:', contained[itr])
 		data[idata]['all_contained'] = all(contained)
 		data[idata]['all_contained_2x2_only'] = all(contained_2x2_only)
+		if all(contained_2x2_only): n2x2+=1
+		data[idata]['fs_contained'] = fs_contained
+		data[idata]['all_but_fs_contained_2x2_only'] = sum(np.array(np.logical_not(contained_2x2_only)).astype(int))==1 and (not fs_contained)
+		data[idata]['pions_contained']=all(pions_contained)
+		data[idata]['containment_threshold'] = max(all_es)
+		data[idata]['containment_threshold_2x2'] = max(all_es_2x2)
+
+		#print(data[idata]['all_but_fs_contained_2x2_only'], contained_2x2_only, fs_contained)
 		total_times += time.time()-start
 		nevents+=1
+
+		#print(data[idata]['all_contained'])
+
+#		if data[idata]['containment_threshold_2x2'] < 20 and data[idata]['containment_threshold_2x2'] > 0:
+#			print(eventN, data[idata]['containment_threshold_2x2'])
 
 		if (eventN % 100 == 0): 
 			print(eventN, '/', max_evdid)
 			print('avg loop time:', total_times/nevents )
+
 
 	return data
 
